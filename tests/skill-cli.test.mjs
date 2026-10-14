@@ -38,7 +38,7 @@ test('included footage consumes its registered source and nested video refs work
   call('asset-add', doc, 'clip.mp4', '--source', 'still.png');
   writeFileSync(doc, JSON.stringify({ scenes: [{ card: '', dur: 2, layers: [{ kind: 'group', children: [{ kind: 'video', video: 'clip.mp4' }] }] }] }));
   const reachedRenderer = call('render', doc, 'out.mp4', '--studio-root', '/missing-editor');
-  assert.match(reachedRenderer.result.errors[0], /No Studio CLI/);
+  assert.match(reachedRenderer.result.errors[0], /create and inspect a current sheet/);
 }));
 
 test('rejection cannot bypass inspection or use an experiment as a defect', () => fixture(({ doc, call }) => {
@@ -56,7 +56,7 @@ test('actual decoder failure permits rejection; replacing the file invalidates i
   assert.equal(inspection.status, 1);
   assert.match(inspection.result.errors[0], /Decoder failure recorded/);
   assert.equal(call('asset-reject', doc, 'clip.mp4', '--defect', 'unreadable', '--reason', 'ffprobe could not decode the generated clip because it contains invalid video data.').status, 0);
-  assert.match(call('render', doc, 'out.mp4', '--studio-root', '/missing-editor').result.errors[0], /No Studio CLI/);
+  assert.match(call('render', doc, 'out.mp4', '--studio-root', '/missing-editor').result.errors[0], /create and inspect a current sheet/);
   writeFileSync(join(root, 'clip.mp4'), 'replaced fixture');
   assert.match(call('render', doc, 'out.mp4').result.errors[0], /generated assets are unused/);
   assert.equal(JSON.parse(readFileSync(doc + '.assets.json')).assets[0].rejection.defect, 'unreadable');

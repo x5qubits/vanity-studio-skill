@@ -81,6 +81,65 @@ function enforce(docPath) {
   return inv;
 }
 
+function revision(docPath) {
+  const digest = createHash('sha256').update(readFileSync(docPath));
+  for (const file of [...refs(read(docPath), dirname(resolve(docPath)))].sort()) {
+    if (existsSync(file)) digest.update('\0' + file + '\0' + hash(file));
+  }
+  return digest.digest('hex');
+}
+
+function reviewState(docPath) {
+  const path = resolve(docPath) + '.review.json';
+  const current = revision(docPath);
+  let data = existsSync(path) ? read(path) : null;
+  if (data && data.version !== 1) throw new Error(`Invalid review record: ${path}`);
+  if (!data || data.revision !== current) data = { version: 1, revision: current, sheet: null, frames: [], approval: null };
+  const save = () => writeFileSync(path, JSON.stringify(data, null, 2));
+  return { path, current, data, save };
+}
+
+function checkPreview(preview) {
+  if (!preview || !existsSync(preview.file) || hash(preview.file) !== preview.hash)
+    throw new Error('Review blocked: a recorded preview is missing or changed. Regenerate and inspect it.');
+  const quality = preview.quality;
+  if (!quality || typeof quality.ok !== 'boolean' || !Array.isArray(quality.errors))
+    throw new Error('Review blocked: the editor did not return composition checks. Use an editor version with preview quality reports.');
+  if (!quality.ok || quality.errors.length)
+    throw new Error('Review blocked: correct the composition errors and regenerate previews: ' + (quality.errors.join('; ') || 'composition report failed'));
+}
+
+function checkedReview(docPath, needsApproval = false) {
+  const state = reviewState(docPath);
+  if (!state.data.sheet || !state.data.frames.length)
+    throw new Error('Render/review blocked: create and inspect a current sheet and full-size detail frame, then run review-approve. Document or local media changes invalidate review.');
+  checkPreview(state.data.sheet);
+  for (const frame of state.data.frames) checkPreview(frame);
+  const required = state.data.sheet.quality.times;
+  const actual = state.data.sheet.times;
+  if (!Array.isArray(required) || !required.length || !Array.isArray(actual) ||
+      required.some(t => !actual.some(s => Number.isFinite(s) && Math.abs(s - t) < 0.002)))
+    throw new Error('Review blocked: the contact sheet must cover every composition review sample. Regenerate sheet without --times or include all quality.times.');
+  if (!state.data.frames.some(frame => frame.scale >= 1))
+    throw new Error('Review blocked: inspect at least one full-size frame (frame defaults to --scale 1).');
+  if (needsApproval && state.data.approval?.revision !== state.current)
+    throw new Error('Render blocked: run review-approve with truthful visual findings after opening the current previews and correcting defects.');
+  return state;
+}
+
+function rememberPreview(docPath, result, op, before, scale) {
+  if (revision(docPath) !== before) throw new Error('The document or local media changed during preview; regenerate and inspect it.');
+  if (!result.file || !existsSync(result.file)) throw new Error('The editor did not save a preview image.');
+  const state = reviewState(docPath);
+  const preview = { file: resolve(result.file), hash: hash(result.file), times: result.times,
+    quality: result.quality, scale, utc: new Date().toISOString() };
+  if (op === 'sheet') state.data.sheet = preview;
+  else state.data.frames = [...state.data.frames.filter(p => p.file !== preview.file), preview];
+  state.data.approval = null;
+  state.save();
+  return state.path;
+}
+
 function invoke(root, argv, capture = false) {
   const result = spawnSync(process.execPath, [join(root, 'tools/render.mjs'), ...argv], {
     stdio: capture ? ['ignore', 'pipe', 'inherit'] : 'inherit', encoding: 'utf8', windowsHide: true,
@@ -101,6 +160,7 @@ try {
   const op = args[0];
   if (op === '--help' || !op) {
     console.log('studio.mjs docs|spec|validate|frame|sheet|render ... [--studio-root <editor>]\n' +
+      'studio.mjs review-approve <doc.json> --notes <actual visual findings>\n' +
       'studio.mjs asset-add|asset-inspect|asset-reject <doc.json> <file> [--source <still> | --defect <quality defect> --reason <findings>]\n' +
       'studio.mjs assets <doc.json>');
   } else if (['asset-add', 'asset-inspect', 'asset-reject', 'assets'].includes(op)) {
@@ -154,12 +214,32 @@ try {
         }
       }
     }
+  } else if (op === 'sheet' || op === 'frame') {
+    if (!args[1] || !args[2]) throw new Error(`${op} needs a doc and output path`);
+    const before = revision(args[1]);
+    const scaleAt = args.indexOf('--scale');
+    const scale = scaleAt >= 0 ? Number(args[scaleAt + 1]) : op === 'frame' ? 1 : .25;
+    const result = invoke(editorRoot(explicitRoot), args, true);
+    const reviewRecord = rememberPreview(args[1], result, op, before, scale);
+    emit({ ...result, reviewRecord, instruction: 'Open the preview. Correct visible defects, regenerate affected previews and run review-approve before export.' });
+  } else if (op === 'review-approve') {
+    const notes = take('--notes');
+    if (!args[1]) throw new Error('review-approve needs a doc path');
+    if (!notes || notes.trim().length < 20) throw new Error('Give truthful visual findings of at least 20 characters after opening previews and correcting defects.');
+    const review = checkedReview(args[1]);
+    review.data.approval = { revision: review.current, notes: notes.trim(), utc: new Date().toISOString() };
+    review.save();
+    emit({ ok: true, review: review.path, revision: review.current, warnings: review.data.sheet.quality.warnings || [] });
   } else if (op === 'render') {
     if (!args[1] || !args[2]) throw new Error('render needs a doc and output path');
     const inv = enforce(args[1]);
+    const review = checkedReview(args[1], true);
     const result = invoke(editorRoot(explicitRoot), args, true);
+    if (revision(args[1]) !== review.current) throw new Error('The document or local media changed during render; review the current version and rerender before delivery.');
     const audit = result.file + '.assets.json';
+    const reviewAudit = result.file + '.review.json';
     writeFileSync(audit, JSON.stringify(inv.data, null, 2));
-    emit({ ...result, assetAudit: audit });
+    writeFileSync(reviewAudit, JSON.stringify(review.data, null, 2));
+    emit({ ...result, assetAudit: audit, reviewAudit });
   } else invoke(editorRoot(explicitRoot), args);
 } catch (error) { fail(error.message); }

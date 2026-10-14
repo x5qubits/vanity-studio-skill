@@ -5,6 +5,7 @@ node_modules/
 studio-root.json
 **/studio-root.json
 *.assets.json
+*.review.json
 *.asset-previews/
 outputs/
 .DS_Store

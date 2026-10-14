@@ -30,11 +30,11 @@ test('the installer copies only the skill; the installed adapter reaches a separ
     });
     assert.equal(call.status, 0, call.stderr);
     assert.deepEqual(JSON.parse(call.stdout).args, ['docs']);
-    const explicit = spawnSync(process.execPath, [adapter, 'frame', 'project.json', 'out.png', '--t', '2.4', '--studio-root', editor], {
+    const explicit = spawnSync(process.execPath, [adapter, 'validate', 'project.json', '--quiet', '--studio-root', editor], {
       cwd: folder, encoding: 'utf8', windowsHide: true,
     });
     assert.equal(explicit.status, 0, explicit.stderr);
-    assert.deepEqual(JSON.parse(explicit.stdout).args, ['frame', 'project.json', 'out.png', '--t', '2.4']);
+    assert.deepEqual(JSON.parse(explicit.stdout).args, ['validate', 'project.json', '--quiet']);
     const invalid = spawnSync(process.execPath, [installer, '--agent', 'codex', '--studio-root', join(folder, 'missing')], {
       env: { ...process.env, CODEX_HOME: join(folder, 'untouched') }, encoding: 'utf8', windowsHide: true,
     });

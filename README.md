@@ -40,6 +40,8 @@ node skills/vanity-studio/scripts/studio.mjs spec --studio-root /path/to/VanityS
 node skills/vanity-studio/scripts/studio.mjs validate project.json --studio-root /path/to/VanityStudio
 node skills/vanity-studio/scripts/studio.mjs sheet project.json preview.jpg --studio-root /path/to/VanityStudio
 node skills/vanity-studio/scripts/studio.mjs frame project.json detail.png --t 2.4 --studio-root /path/to/VanityStudio
+# Open the images, correct defects, regenerate and inspect the affected previews.
+node skills/vanity-studio/scripts/studio.mjs review-approve project.json --notes "Describe the actual scene checks and corrections."
 node skills/vanity-studio/scripts/studio.mjs render project.json final.mp4 --studio-root /path/to/VanityStudio
 ```
 
@@ -49,7 +51,11 @@ Media paths are relative to the composition JSON file. The editor's `docs` and `
 
 Register successful generated files with `asset-add`. The adapter blocks final rendering when a registered asset is unused unless it has been inspected and rejected for a concrete quality defect. An included derived clip also accounts for its registered source still. The workflow uses contact sheets and detailed frames to review composition and subtitles before exporting.
 
-The adapter cannot discover assets that the agent fails to register, judge aesthetics independently, or enforce its checks when the editor's renderer is invoked directly. See [the skill](skills/vanity-studio/SKILL.md) for the complete workflow.
+Available image/video generation tools, including Gemini, are welcome when they improve the concept; the calling agent supplies them and respects the user's budget. Inspect generated results and account for their use.
+
+Final export also requires a current contact sheet covering every editor review sample, a full-size detail frame and explicit visual-review findings. Missing previews, automatic composition errors, changed preview files, or changes to the document or local source media invalidate review and block export. Review records are saved beside the document and final output. The agent must correct visible issues, including text overflowing cards, before approving.
+
+The adapter cannot discover assets that the agent fails to register, judge aesthetics independently, prove the agent opened an image, detect changed contents behind a remote URL, or enforce its checks when the editor's renderer is invoked directly. A clean automatic report does not prove card containment or good composition. See [the skill](skills/vanity-studio/SKILL.md) for the complete workflow.
 
 ## Verify the adapter
 
